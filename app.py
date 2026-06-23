@@ -35,38 +35,39 @@ if uploaded_file is not None:
 
     df_raw = pd.read_csv(uploaded_file)
 
-    # ================= SESSION STATE =================
-    if "df" not in st.session_state:
-        st.session_state.df = df_raw.copy()
+    # ✅ SESSION STATE
+    defaults = {
+        "df": df_raw.copy(),
+        "cleaning_report": "",
+        "insights_report": "",
+        "chat_history": []
+    }
 
-    if "cleaning_report" not in st.session_state:
-        st.session_state.cleaning_report = ""
+    for key, val in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = val
 
-    if "insights_report" not in st.session_state:
-        st.session_state.insights_report = ""
+    # ================= DATA OVERVIEW =================
+    st.subheader("📊 Dataset Overview")
 
-    if "chat_history" not in st.session_state:
-        st.session_state.chat_history = []
+    left, right = st.columns([3, 2])
 
-    # ================= PREVIEW + METRICS =================
-    col1, col2 = st.columns([3, 1])
-
-    with col1:
-        st.subheader("🔍 Data Preview")
+    with left:
         st.dataframe(st.session_state.df.head())
 
-    with col2:
-        st.subheader("📊 Dataset Metrics")
+    with right:
+        m1, m2 = st.columns(2)
+        m3, m4 = st.columns(2)
 
         total_rows = st.session_state.df.shape[0]
         total_cols = st.session_state.df.shape[1]
         missing = st.session_state.df.isnull().sum().sum()
         duplicates = st.session_state.df.duplicated().sum()
 
-        st.metric("Rows", total_rows)
-        st.metric("Columns", total_cols)
-        st.metric("Missing Values", missing)
-        st.metric("Duplicate Rows", duplicates)
+        m1.metric("Total Rows", total_rows)
+        m2.metric("Total Columns", total_cols)
+        m3.metric("Missing Values", missing)
+        m4.metric("Duplicate Rows", duplicates)
 
     # ================= EXECUTION ENGINE =================
     def execute_analytics_code(code_input: str):
@@ -97,64 +98,57 @@ if uploaded_file is not None:
     st.header("🧹 Step 1: Data Cleaning")
 
     cleaning_prompt = st.text_area(
-        "Cleaning Instructions",
-        value="Handle missing values, remove duplicates, fix datatypes."
+        "Customize cleaning logic",
+        value="""
+Handle missing values appropriately, remove duplicate rows, fix incorrect data types,
+standardize text formats, and clean inconsistent or anomalous entries.
+"""
     )
 
     if st.button("Run Cleaning"):
 
         with st.spinner("Cleaning data..."):
 
-            prompt = f"""
-            Clean dataframe df using pandas.
-
-            Rules:
-            - Handle missing values
-            - Remove duplicates
-            - Fix datatypes
-            - Modify df directly
-            - Do not explain
-
-            Instruction: {cleaning_prompt}
-            """
-
             code = llm.invoke([
-                ("system", "Return only Python pandas code."),
-                ("human", prompt)
+                ("system", "Return ONLY pandas Python code. Modify df directly."),
+                ("human", cleaning_prompt)
             ]).content
 
             execute_analytics_code(code)
 
-            st.session_state.cleaning_report = f"""
-✅ Cleaning completed:
-- Missing values handled
-- Duplicates removed
-- Data types standardized
+            st.session_state.cleaning_report = """
+The dataset has been successfully cleaned. Missing values were handled carefully based on column context,
+duplicate records were removed to ensure data uniqueness, and inconsistent data types were standardized.
+Additionally, text inconsistencies and anomalous entries were corrected to improve overall data quality and reliability.
 """
 
-            st.success("Cleaning Done")
+            st.success("✅ Cleaning Completed")
 
     if st.session_state.cleaning_report:
         st.markdown(st.session_state.cleaning_report)
 
-        # ✅ Download button
         csv = st.session_state.df.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "⬇️ Download Cleaned Data",
-            data=csv,
-            file_name="cleaned_data.csv"
-        )
+        st.download_button("⬇️ Download Cleaned CSV", csv, "cleaned_data.csv")
 
     # ================= STEP 2 =================
     st.markdown("---")
     st.header("📊 Step 2: Insights & Charts")
 
+    report_prompt = st.text_area(
+        "Customize report",
+        value="""
+Provide a clear business-style summary of the dataset. Highlight key patterns,
+important trends, and meaningful insights. Write everything in paragraph format
+without using bullet points.
+"""
+    )
+
     if st.button("Generate Report"):
 
         df_plot = st.session_state.df.copy()
 
-        num_cols = df_plot.select_dtypes(include="number").columns
-        cat_cols = df_plot.select_dtypes(include="object").columns
+        num_cols = df_plot.select_dtypes(include='number').columns
+        cat_cols = df_plot.select_dtypes(include='object').columns
 
         if len(num_cols) > 0:
             plt.figure()
@@ -169,26 +163,27 @@ if uploaded_file is not None:
             plt.close()
 
         report = llm.invoke([
-            ("system", "You are a business analyst."),
-            ("human", f"Columns: {list(df_plot.columns)}, Rows: {len(df_plot)}. Give key insights.")
+            ("system", "Write a clear paragraph-style business analysis. No bullet points."),
+            ("human", f"""
+Columns: {list(df_plot.columns)}
+Rows: {len(df_plot)}
+
+Instruction:
+{report_prompt}
+""")
         ])
 
         st.session_state.insights_report = report.content
 
     if st.session_state.insights_report:
-
         st.markdown(st.session_state.insights_report)
 
-        # ✅ CENTER charts
-        st.markdown("<div style='text-align: center;'>", unsafe_allow_html=True)
-
-        if os.path.exists("chart1.png"):
-            st.image("chart1.png")
-
-        if os.path.exists("chart2.png"):
-            st.image("chart2.png")
-
-        st.markdown("</div>", unsafe_allow_html=True)
+        c1, c2, c3 = st.columns([1, 2, 1])
+        with c2:
+            if os.path.exists("chart1.png"):
+                st.image("chart1.png")
+            if os.path.exists("chart2.png"):
+                st.image("chart2.png")
 
     # ================= STEP 3 =================
     st.markdown("---")
@@ -202,18 +197,21 @@ if uploaded_file is not None:
 
         code = llm.invoke([
             ("system", """
-            You are a pandas expert.
-            Generate ONLY pandas code.
-            Store output in variable 'result'.
-            No explanation.
-            """),
+You are a pandas expert.
+
+Rules:
+- Generate ONLY pandas code
+- DO NOT use SQL
+- DO NOT use import
+- Always store output in variable 'result'
+"""),
             ("human", query)
         ]).content
 
         code = code.replace("```python", "").replace("```", "")
 
         if "import" in code.lower() or "select" in code.lower():
-            return "⚠️ Could not process query"
+            return "⚠️ Query could not be processed. Try rephrasing."
 
         result = execute_analytics_code(code)
 
@@ -225,7 +223,7 @@ if uploaded_file is not None:
             result_str = str(result)
 
         answer = llm.invoke([
-            ("system", "Explain clearly."),
+            ("system", "Explain clearly in simple terms."),
             ("human", f"Question: {query}\nResult: {result_str}")
         ])
 
