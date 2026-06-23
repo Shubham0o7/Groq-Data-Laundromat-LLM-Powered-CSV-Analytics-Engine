@@ -159,4 +159,3 @@ if uploaded_file is not None:
                 "role": "assistant",
                 "content": response
             })
-``
