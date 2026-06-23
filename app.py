@@ -31,8 +31,6 @@ uploaded_file = st.file_uploader("Upload CSV", type="csv")
 
 if uploaded_file is not None:
 
-    if uploaded_file is not None:
-
     df_raw = pd.read_csv(uploaded_file)
 
     # ✅ ALWAYS initialize safely
