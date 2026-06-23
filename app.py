@@ -31,16 +31,23 @@ uploaded_file = st.file_uploader("Upload CSV", type="csv")
 
 if uploaded_file is not None:
 
+    if uploaded_file is not None:
+
     df_raw = pd.read_csv(uploaded_file)
 
+    # ✅ ALWAYS initialize safely
     if "df" not in st.session_state:
         st.session_state.df = df_raw.copy()
-        st.session_state.chat_history = []
-        st.session_state.cleaning_done = False
-        st.session_state.report_text = ""
 
-    st.subheader("Preview")
-    st.dataframe(st.session_state.df.head())
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+
+    if "cleaning_done" not in st.session_state:
+        st.session_state.cleaning_done = False
+
+    if "report_text" not in st.session_state:
+        st.session_state.report_text = ""
+``
 
     # ================= EXECUTION ENGINE =================
     def execute_analytics_code(code_input: str):
