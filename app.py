@@ -45,7 +45,6 @@ if uploaded_file is not None:
 
     if "report_text" not in st.session_state:
         st.session_state.report_text = ""
-``
 
     # ================= EXECUTION ENGINE =================
     def execute_analytics_code(code_input: str):
