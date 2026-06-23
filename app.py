@@ -133,7 +133,7 @@ cleaning_prompt = st.text_area(
 )
 
 
-    if st.button("Run Cleaning"):
+ if st.button("Run Cleaning"):
 
         with st.spinner("Cleaning data..."):
 
