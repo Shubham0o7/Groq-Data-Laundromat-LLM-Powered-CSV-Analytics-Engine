@@ -165,49 +165,62 @@ if uploaded_file is not None:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    def run_chat_agent(query: str):
+    def run_chat_agent(user_query: str) -> str:
 
-        # Step 1 → generate code
-        code = llm.invoke([
-            ("system", """
-            Generate pandas code only.
-            Store output in variable result.
-            Do not explain.
-            """),
-            ("human", query)
-        ]).content
+    system_prompt = """
+    You are a Python pandas data analyst.
 
-        code = code.replace("```python", "").replace("```", "")
+    STRICT RULES:
+    - ONLY generate pandas code
+    - NEVER use SQL
+    - NEVER use import
+    - dataframe is df
+    - ALWAYS store output in variable: result
+    - DO NOT explain
+    - RETURN ONLY CODE
 
-        # Step 2 → execute
-        result = execute_analytics_code(code)
+    IMPORTANT:
+    - For filtering strings, use:
+      df['col'].str.contains(value, case=False, na=False)
+    """
 
-        # Step 3 → explain
-        if isinstance(result, pd.DataFrame):
-            result_str = result.head(30).to_string()
-        elif isinstance(result, pd.Series):
-            result_str = result.to_string()
-        else:
-            result_str = str(result)
+    # Step 1 → Generate code
+    code_response = llm.invoke([
+        ("system", system_prompt),
+        ("human", user_query)
+    ])
 
-        answer = llm.invoke([
-            ("system", "Explain clearly."),
-            ("human", f"Question: {query}\nResult: {result_str}")
-        ])
+    generated_code = code_response.content.strip()
+    generated_code = generated_code.replace("```python", "").replace("```", "")
 
-        return answer.content
+    # 🔒 Guardrails
+    if "import" in generated_code.lower() or "select " in generated_code.lower():
+        return "⚠️ I couldn't process that query properly. Try rephrasing your question."
 
-    if user_query := st.chat_input("Ask anything about your data..."):
+    # Step 2 → Execute
+    execution_result = execute_analytics_code(generated_code)
 
-        st.session_state.chat_history.append({"role": "user", "content": user_query})
+    # Handle execution failure
+    if isinstance(execution_result, str) and "Error" in execution_result:
+        return f"⚠️ Error while processing your request: {execution_result}"
 
-        with st.chat_message("user"):
-            st.markdown(user_query)
+    # Step 3 → Format result
+    if isinstance(execution_result, pd.DataFrame):
+        result_str = execution_result.head(30).to_string()
+    elif isinstance(execution_result, pd.Series):
+        result_str = execution_result.to_string()
+    else:
+        result_str = str(execution_result)
 
-        with st.spinner("Analyzing..."):
-            response = run_chat_agent(user_query)
+    # Step 4 → Final explanation
+    final_response = llm.invoke([
+        ("system", "Explain result clearly in simple terms."),
+        ("human", f"""
+        User Question: {user_query}
 
-        with st.chat_message("assistant"):
-            st.markdown(response)
+        Result:
+        {result_str}
+        """)
+    ])
 
-        st.session_state.chat_history.append({"role": "assistant", "content": response})
+    return final_response.content
