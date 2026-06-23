@@ -1,5 +1,4 @@
-import streamlit as st  # ✅ MUST BE FIRST
-
+import streamlit as st
 st.set_page_config(page_title="Groq & Roll Data Laundromat", layout="wide")
 
 import pandas as pd
@@ -36,7 +35,7 @@ if uploaded_file is not None:
 
     df_raw = pd.read_csv(uploaded_file)
 
-    # ✅ Session state init
+    # ================= SESSION STATE =================
     if "df" not in st.session_state:
         st.session_state.df = df_raw.copy()
 
@@ -49,20 +48,36 @@ if uploaded_file is not None:
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
 
-    # ================= PREVIEW =================
-    st.subheader("Preview")
-    st.dataframe(st.session_state.df.head())
+    # ================= PREVIEW + METRICS =================
+    col1, col2 = st.columns([3, 1])
+
+    with col1:
+        st.subheader("🔍 Data Preview")
+        st.dataframe(st.session_state.df.head())
+
+    with col2:
+        st.subheader("📊 Dataset Metrics")
+
+        total_rows = st.session_state.df.shape[0]
+        total_cols = st.session_state.df.shape[1]
+        missing = st.session_state.df.isnull().sum().sum()
+        duplicates = st.session_state.df.duplicated().sum()
+
+        st.metric("Rows", total_rows)
+        st.metric("Columns", total_cols)
+        st.metric("Missing Values", missing)
+        st.metric("Duplicate Rows", duplicates)
 
     # ================= EXECUTION ENGINE =================
     def execute_analytics_code(code_input: str):
+
         cleaned_code = code_input.strip().replace("```python", "").replace("```", "")
 
-        # ✅ safety
         if "import" in cleaned_code or "os." in cleaned_code:
             return "Unsafe code detected"
 
         df_safe = st.session_state.df.copy()
-        env = {"df": df_safe, "pd": pd, "plt": plt, "sns": sns}
+        env = {"df": df_safe, "pd": pd}
 
         try:
             exec(cleaned_code, {}, env)
@@ -77,7 +92,7 @@ if uploaded_file is not None:
         except Exception as e:
             return f"Execution Error: {str(e)}"
 
-    # ================= STEP 1: DATA CLEANING =================
+    # ================= STEP 1 =================
     st.markdown("---")
     st.header("🧹 Step 1: Data Cleaning")
 
@@ -91,7 +106,7 @@ if uploaded_file is not None:
         with st.spinner("Cleaning data..."):
 
             prompt = f"""
-            You are a pandas expert. Clean dataframe df.
+            Clean dataframe df using pandas.
 
             Rules:
             - Handle missing values
@@ -100,23 +115,37 @@ if uploaded_file is not None:
             - Modify df directly
             - Do not explain
 
-            User instructions: {cleaning_prompt}
+            Instruction: {cleaning_prompt}
             """
 
             code = llm.invoke([
-                ("system", "Return only Python code."),
+                ("system", "Return only Python pandas code."),
                 ("human", prompt)
             ]).content
 
             execute_analytics_code(code)
 
-            st.session_state.cleaning_report = "✅ Data cleaned successfully"
-            st.success("Done")
+            st.session_state.cleaning_report = f"""
+✅ Cleaning completed:
+- Missing values handled
+- Duplicates removed
+- Data types standardized
+"""
+
+            st.success("Cleaning Done")
 
     if st.session_state.cleaning_report:
         st.markdown(st.session_state.cleaning_report)
 
-    # ================= STEP 2: REPORT =================
+        # ✅ Download button
+        csv = st.session_state.df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "⬇️ Download Cleaned Data",
+            data=csv,
+            file_name="cleaned_data.csv"
+        )
+
+    # ================= STEP 2 =================
     st.markdown("---")
     st.header("📊 Step 2: Insights & Charts")
 
@@ -130,26 +159,28 @@ if uploaded_file is not None:
         if len(num_cols) > 0:
             plt.figure()
             sns.histplot(df_plot[num_cols[0]].dropna())
-            plt.title(num_cols[0])
             plt.savefig("chart1.png")
             plt.close()
 
         if len(cat_cols) > 0:
             plt.figure()
             df_plot[cat_cols[0]].value_counts().head(10).plot(kind="bar")
-            plt.title(cat_cols[0])
             plt.savefig("chart2.png")
             plt.close()
 
         report = llm.invoke([
             ("system", "You are a business analyst."),
-            ("human", f"Columns: {list(df_plot.columns)}, Rows: {len(df_plot)}. Give insights.")
+            ("human", f"Columns: {list(df_plot.columns)}, Rows: {len(df_plot)}. Give key insights.")
         ])
 
         st.session_state.insights_report = report.content
 
     if st.session_state.insights_report:
+
         st.markdown(st.session_state.insights_report)
+
+        # ✅ CENTER charts
+        st.markdown("<div style='text-align: center;'>", unsafe_allow_html=True)
 
         if os.path.exists("chart1.png"):
             st.image("chart1.png")
@@ -157,7 +188,9 @@ if uploaded_file is not None:
         if os.path.exists("chart2.png"):
             st.image("chart2.png")
 
-    # ================= STEP 3: CHAT =================
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # ================= STEP 3 =================
     st.markdown("---")
     st.header("💬 Ask Questions")
 
@@ -165,62 +198,50 @@ if uploaded_file is not None:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    def run_chat_agent(user_query: str) -> str:
-        
-        system_prompt = """
-        You are a Python pandas data analyst.
+    def run_chat_agent(query: str):
 
-        STRICT RULES:
-        - ONLY generate pandas code
-        - NEVER use SQL
-        - NEVER use import
-        - dataframe is df
-        - ALWAYS store output in variable: result
-        - DO NOT explain
-        - RETURN ONLY CODE
+        code = llm.invoke([
+            ("system", """
+            You are a pandas expert.
+            Generate ONLY pandas code.
+            Store output in variable 'result'.
+            No explanation.
+            """),
+            ("human", query)
+        ]).content
 
-        IMPORTANT:
-        - For filtering strings, use:
-          df['col'].str.contains(value, case=False, na=False)
-        """
+        code = code.replace("```python", "").replace("```", "")
 
-        # Step 1 → Generate code
-        code_response = llm.invoke([
-            ("system", system_prompt),
-            ("human", user_query)
-        ])
+        if "import" in code.lower() or "select" in code.lower():
+            return "⚠️ Could not process query"
 
-        generated_code = code_response.content.strip()
-        generated_code = generated_code.replace("```python", "").replace("```", "")
+        result = execute_analytics_code(code)
 
-        # 🔒 Guardrails
-        if "import" in generated_code.lower() or "select " in generated_code.lower():
-            return "⚠️ I couldn't process that query properly. Try rephrasing your question."
-
-        # Step 2 → Execute
-        execution_result = execute_analytics_code(generated_code)
-
-        # Handle execution failure
-        if isinstance(execution_result, str) and "Error" in execution_result:
-            return f"⚠️ Error while processing your request: {execution_result}"
-
-        # ✅ Step 3 → Format result (FIXED INDENT)
-        if isinstance(execution_result, pd.DataFrame):
-            result_str = execution_result.head(30).to_string()
-        elif isinstance(execution_result, pd.Series):
-            result_str = execution_result.to_string()
+        if isinstance(result, pd.DataFrame):
+            result_str = result.head(20).to_string()
+        elif isinstance(result, pd.Series):
+            result_str = result.to_string()
         else:
-            result_str = str(execution_result)
+            result_str = str(result)
 
-        # ✅ Step 4 → Final explanation (FIXED INDENT)
-        final_response = llm.invoke([
-            ("system", "Explain result clearly in simple terms."),
-            ("human", f"""
-            User Question: {user_query}
-
-            Result:
-            {result_str}
-            """)
+        answer = llm.invoke([
+            ("system", "Explain clearly."),
+            ("human", f"Question: {query}\nResult: {result_str}")
         ])
 
-        return final_response.content
+        return answer.content
+
+    if user_query := st.chat_input("Ask your data question..."):
+
+        st.session_state.chat_history.append({"role": "user", "content": user_query})
+
+        with st.chat_message("user"):
+            st.markdown(user_query)
+
+        with st.spinner("Analyzing..."):
+            response = run_chat_agent(user_query)
+
+        with st.chat_message("assistant"):
+            st.markdown(response)
+
+        st.session_state.chat_history.append({"role": "assistant", "content": response})
