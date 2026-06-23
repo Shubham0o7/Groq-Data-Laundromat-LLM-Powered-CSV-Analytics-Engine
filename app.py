@@ -1,31 +1,24 @@
 import streamlit as st
+
+# ✅ MUST BE FIRST STREAMLIT CALL
 st.set_page_config(page_title="Groq & Roll Data Laundromat", layout="wide")
-# ✅ CUSTOM TEXTAREA ALIGNMENT
+
+# ✅ TEXTAREA ALIGNMENT (LIKE YOUR IMAGE)
 st.markdown("""
 <style>
-
-/* Text area styling */
 textarea {
     padding: 14px !important;
     line-height: 1.6 !important;
     font-size: 15px !important;
 }
-
-/* Fix inner container spacing */
 [data-testid="stTextArea"] textarea {
     border-radius: 10px !important;
     min-height: 120px !important;
 }
-
-/* Optional: smoother look */
-[data-testid="stTextArea"] div {
-    margin-bottom: 0px;
-}
-
 </style>
 """, unsafe_allow_html=True)
 
-
+# ================= IMPORTS =================
 import pandas as pd
 import os
 import matplotlib.pyplot as plt
@@ -60,7 +53,7 @@ if uploaded_file is not None:
 
     df_raw = pd.read_csv(uploaded_file)
 
-    # ✅ SESSION STATE
+    # ✅ SESSION STATE INIT
     defaults = {
         "df": df_raw.copy(),
         "cleaning_report": "",
@@ -84,29 +77,23 @@ if uploaded_file is not None:
         m1, m2 = st.columns(2)
         m3, m4 = st.columns(2)
 
-        total_rows = st.session_state.df.shape[0]
-        total_cols = st.session_state.df.shape[1]
-        missing = st.session_state.df.isnull().sum().sum()
-        duplicates = st.session_state.df.duplicated().sum()
-
-        m1.metric("Total Rows", total_rows)
-        m2.metric("Total Columns", total_cols)
-        m3.metric("Missing Values", missing)
-        m4.metric("Duplicate Rows", duplicates)
+        m1.metric("Total Rows", st.session_state.df.shape[0])
+        m2.metric("Total Columns", st.session_state.df.shape[1])
+        m3.metric("Missing Values", st.session_state.df.isnull().sum().sum())
+        m4.metric("Duplicate Rows", st.session_state.df.duplicated().sum())
 
     # ================= EXECUTION ENGINE =================
     def execute_analytics_code(code_input: str):
 
-        cleaned_code = code_input.strip().replace("```python", "").replace("```", "")
+        code = code_input.strip().replace("```python", "").replace("```", "")
 
-        if "import" in cleaned_code or "os." in cleaned_code:
+        if "import" in code.lower() or "os." in code.lower():
             return "Unsafe code detected"
 
-        df_safe = st.session_state.df.copy()
-        env = {"df": df_safe, "pd": pd}
+        env = {"df": st.session_state.df.copy(), "pd": pd}
 
         try:
-            exec(cleaned_code, {}, env)
+            exec(code, {}, env)
 
             result = env.get("result", None)
 
@@ -116,39 +103,33 @@ if uploaded_file is not None:
             return result
 
         except Exception as e:
-            return f"Execution Error: {str(e)}"
+            return f"Error: {str(e)}"
 
     # ================= STEP 1 =================
     st.markdown("---")
     st.header("🧹 Step 1: Data Cleaning")
 
-    
-cleaning_prompt = st.text_area(
-    "Customize cleaning logic",
-    value=(
-        "Handle missing values appropriately, remove duplicate rows, "
-        "fix incorrect data types, standardize text formats, and clean "
-        "inconsistent or anomalous entries."
+    cleaning_prompt = st.text_area(
+        "Customize cleaning logic",
+        value="Handle missing values appropriately, remove duplicate rows, fix incorrect data types, standardize text formats, and clean inconsistent or anomalous entries."
     )
-)
 
-
- if st.button("Run Cleaning"):
+    if st.button("Run Cleaning"):
 
         with st.spinner("Cleaning data..."):
 
             code = llm.invoke([
-                ("system", "Return ONLY pandas Python code. Modify df directly."),
+                ("system", "Return ONLY pandas code."),
                 ("human", cleaning_prompt)
             ]).content
 
             execute_analytics_code(code)
 
-            st.session_state.cleaning_report = """
-The dataset has been successfully cleaned. Missing values were handled carefully based on column context,
-duplicate records were removed to ensure data uniqueness, and inconsistent data types were standardized.
-Additionally, text inconsistencies and anomalous entries were corrected to improve overall data quality and reliability.
-"""
+            st.session_state.cleaning_report = (
+                "The dataset has been successfully cleaned. Missing values were handled, "
+                "duplicates removed, and data types standardized. Text inconsistencies "
+                "and anomalies were also corrected to improve data quality."
+            )
 
             st.success("✅ Cleaning Completed")
 
@@ -156,21 +137,16 @@ Additionally, text inconsistencies and anomalous entries were corrected to impro
         st.markdown(st.session_state.cleaning_report)
 
         csv = st.session_state.df.to_csv(index=False).encode("utf-8")
-        st.download_button("⬇️ Download Cleaned CSV", csv, "cleaned_data.csv")
+        st.download_button("⬇️ Download Cleaned Data", csv, "cleaned_data.csv")
 
     # ================= STEP 2 =================
     st.markdown("---")
     st.header("📊 Step 2: Insights & Charts")
 
-    
-report_prompt = st.text_area(
-    "Customize report",
-    value=(
-        "Provide a clear business-style summary of the dataset. Highlight key patterns, "
-        "important trends, and meaningful insights. Write everything in paragraph form "
-        "without using bullet points."
+    report_prompt = st.text_area(
+        "Customize report",
+        value="Provide a clear business-style summary of the dataset. Highlight trends and key insights in paragraph form without bullet points."
     )
-)
 
     if st.button("Generate Report"):
 
@@ -192,14 +168,8 @@ report_prompt = st.text_area(
             plt.close()
 
         report = llm.invoke([
-            ("system", "Write a clear paragraph-style business analysis. No bullet points."),
-            ("human", f"""
-Columns: {list(df_plot.columns)}
-Rows: {len(df_plot)}
-
-Instruction:
-{report_prompt}
-""")
+            ("system", "Write paragraph style insights. No bullets."),
+            ("human", f"Columns: {list(df_plot.columns)}, Rows: {len(df_plot)}. {report_prompt}")
         ])
 
         st.session_state.insights_report = report.content
@@ -226,13 +196,10 @@ Instruction:
 
         code = llm.invoke([
             ("system", """
-You are a pandas expert.
-
-Rules:
-- Generate ONLY pandas code
-- DO NOT use SQL
-- DO NOT use import
-- Always store output in variable 'result'
+Generate ONLY pandas code.
+- No SQL
+- No imports
+- Store output in variable 'result'
 """),
             ("human", query)
         ]).content
@@ -240,7 +207,7 @@ Rules:
         code = code.replace("```python", "").replace("```", "")
 
         if "import" in code.lower() or "select" in code.lower():
-            return "⚠️ Query could not be processed. Try rephrasing."
+            return "⚠️ Could not process query."
 
         result = execute_analytics_code(code)
 
@@ -252,8 +219,8 @@ Rules:
             result_str = str(result)
 
         answer = llm.invoke([
-            ("system", "Explain clearly in simple terms."),
-            ("human", f"Question: {query}\nResult: {result_str}")
+            ("system", "Explain clearly."),
+            ("human", f"Question: {query}\nResult:\n{result_str}")
         ])
 
         return answer.content
