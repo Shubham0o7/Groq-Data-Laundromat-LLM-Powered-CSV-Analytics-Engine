@@ -166,59 +166,61 @@ if uploaded_file is not None:
             st.markdown(msg["content"])
 
     def run_chat_agent(user_query: str) -> str:
-        system_prompt = """
-        You are a Python pandas data analyst.
-        STRICT RULES:
-        - ONLY generate pandas code
-        - NEVER use SQL
-        - NEVER use import
-        - dataframe is df
-        - ALWAYS store output in variable: result
-        - DO NOT explain
-        - RETURN ONLY CODE
 
-        IMPORTANT:
-        - For filtering strings, use:
-          df['col'].str.contains(value, case=False, na=False)
-        """
+    system_prompt = """
+    You are a Python pandas data analyst.
 
-        # Step 1 → Generate code
-        code_response = llm.invoke([
-            ("system", system_prompt),
-            ("human", user_query)
-        ])
+    STRICT RULES:
+    - ONLY generate pandas code
+    - NEVER use SQL
+    - NEVER use import
+    - dataframe is df
+    - ALWAYS store output in variable: result
+    - DO NOT explain
+    - RETURN ONLY CODE
 
-        generated_code = code_response.content.strip()
-        generated_code = generated_code.replace("```python", "").replace("```", "")
+    IMPORTANT:
+    - For filtering strings, use:
+      df['col'].str.contains(value, case=False, na=False)
+    """
 
-        # 🔒 Guardrails
-        if "import" in generated_code.lower() or "select " in generated_code.lower():
-            return "⚠️ I couldn't process that query properly. Try rephrasing your question."
+    # Step 1 → Generate code
+    code_response = llm.invoke([
+        ("system", system_prompt),
+        ("human", user_query)
+    ])
 
-        # Step 2 → Execute
-        execution_result = execute_analytics_code(generated_code)
+    generated_code = code_response.content.strip()
+    generated_code = generated_code.replace("```python", "").replace("```", "")
 
-        # Handle execution failure
-        if isinstance(execution_result, str) and "Error" in execution_result:
-            return f"⚠️ Error while processing your request: {execution_result}"
+    # 🔒 Guardrails
+    if "import" in generated_code.lower() or "select " in generated_code.lower():
+        return "⚠️ I couldn't process that query properly. Try rephrasing your question."
 
-        # Step 3 → Format result
-            if isinstance(execution_result, pd.DataFrame):
-                 result_str = execution_result.head(30).to_string()
-            elif isinstance(execution_result, pd.Series):
-                result_str = execution_result.to_string()
-             else:
-                result_str = str(execution_result)
+    # Step 2 → Execute
+    execution_result = execute_analytics_code(generated_code)
 
-         # Step 4 → Final explanation
-            final_response = llm.invoke([
-                ("system", "Explain result clearly in simple terms."),
-                ("human", f"""
-                User Question: {user_query}
+    # Handle execution failure
+    if isinstance(execution_result, str) and "Error" in execution_result:
+        return f"⚠️ Error while processing your request: {execution_result}"
 
-                Result:
-                {result_str}
-                """)
-            ])
+    # ✅ Step 3 → Format result (FIXED INDENT)
+    if isinstance(execution_result, pd.DataFrame):
+        result_str = execution_result.head(30).to_string()
+    elif isinstance(execution_result, pd.Series):
+        result_str = execution_result.to_string()
+    else:
+        result_str = str(execution_result)
 
-            return final_response.content
+    # ✅ Step 4 → Final explanation (FIXED INDENT)
+    final_response = llm.invoke([
+        ("system", "Explain result clearly in simple terms."),
+        ("human", f"""
+        User Question: {user_query}
+
+        Result:
+        {result_str}
+        """)
+    ])
+
+    return final_response.content
