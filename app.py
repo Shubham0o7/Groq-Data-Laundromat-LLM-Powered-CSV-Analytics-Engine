@@ -1,5 +1,30 @@
 import streamlit as st
 st.set_page_config(page_title="Groq & Roll Data Laundromat", layout="wide")
+# ✅ CUSTOM TEXTAREA ALIGNMENT
+st.markdown("""
+<style>
+
+/* Text area styling */
+textarea {
+    padding: 14px !important;
+    line-height: 1.6 !important;
+    font-size: 15px !important;
+}
+
+/* Fix inner container spacing */
+[data-testid="stTextArea"] textarea {
+    border-radius: 10px !important;
+    min-height: 120px !important;
+}
+
+/* Optional: smoother look */
+[data-testid="stTextArea"] div {
+    margin-bottom: 0px;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
 
 import pandas as pd
 import os
@@ -97,13 +122,16 @@ if uploaded_file is not None:
     st.markdown("---")
     st.header("🧹 Step 1: Data Cleaning")
 
-    cleaning_prompt = st.text_area(
-        "Customize cleaning logic",
-        value="""
-Handle missing values appropriately, remove duplicate rows, fix incorrect data types,
-standardize text formats, and clean inconsistent or anomalous entries.
-"""
+    
+cleaning_prompt = st.text_area(
+    "Customize cleaning logic",
+    value=(
+        "Handle missing values appropriately, remove duplicate rows, "
+        "fix incorrect data types, standardize text formats, and clean "
+        "inconsistent or anomalous entries."
     )
+)
+
 
     if st.button("Run Cleaning"):
 
@@ -134,14 +162,15 @@ Additionally, text inconsistencies and anomalous entries were corrected to impro
     st.markdown("---")
     st.header("📊 Step 2: Insights & Charts")
 
-    report_prompt = st.text_area(
-        "Customize report",
-        value="""
-Provide a clear business-style summary of the dataset. Highlight key patterns,
-important trends, and meaningful insights. Write everything in paragraph format
-without using bullet points.
-"""
+    
+report_prompt = st.text_area(
+    "Customize report",
+    value=(
+        "Provide a clear business-style summary of the dataset. Highlight key patterns, "
+        "important trends, and meaningful insights. Write everything in paragraph form "
+        "without using bullet points."
     )
+)
 
     if st.button("Generate Report"):
 
